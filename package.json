@@ -1,0 +1,24 @@
+{
+  "name": "generate-image-asset-skill",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Self-contained image generation toolkit: Skill (CLI) + MCP server + Task API engine. Turns a prompt into a verified, exact-ratio, high-resolution PNG.",
+  "scripts": {
+    "engine": "node engine/cli.mjs",
+    "mcp": "node engine/mcp-server.mjs",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "sharp": "^0.34.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.5"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT"
+}

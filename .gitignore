@@ -3,6 +3,7 @@ output/
 work/
 __pycache__/
 *.pyc
+node_modules/
 
 # 密钥与本地配置 —— 永远不要提交
 .env
