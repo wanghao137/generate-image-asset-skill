@@ -1,34 +1,85 @@
-# Generate Image Asset
+**[English](./README.md)** | [简体中文](./README.zh-CN.md)
 
-一个**自包含**的图像生成工具包：一句话提示词 → 比例精确、可校验的高清 PNG。
+<p align="center">
+  <img src="docs/images/hero.png" alt="Generate Image Asset" width="720">
+</p>
 
-本仓库集成了生成图片所需的全部组件，**只需 clone 这一个仓库**：
+<h1 align="center">Generate Image Asset</h1>
 
-| 组件 | 给谁用 | 入口 |
-|---|---|---|
-| **Skill（命令行）** | 喜欢敲命令行、写脚本的人 | `scripts/run_image_job.py` |
-| **MCP server** | Cursor / Claude 等 AI 助手 | `engine/mcp-server.mjs` |
-| **引擎（Task API）** | 上面两个都靠它干活 | `engine/cli.mjs`（`npm run engine`） |
+<p align="center">
+  <em>Turn one line of text into a pixel-perfect, verifiable, high-resolution PNG.<br>Self-contained toolkit: CLI Skill + MCP server + generation engine.</em>
+</p>
 
-支持两种生成模型：
-- **图像模型**（如 `gpt-image-2`）→ Images API
-- **文本模型**（如 `gpt-5.6-sol`）→ Responses API（通过 `image_generation` 工具出图）
-
-无论哪种模型，最终产物都满足同一套硬性约束：源图与成品图严格同比例、精确目标尺寸、SHA-256 可校验、无透明黑边、绝不拉伸。
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/Node.js-22+-339933.svg?style=flat-square&logo=node.js&logoColor=white" alt="Node">
+  <img src="https://img.shields.io/badge/Python-3.10+-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/gpt--image--2-supported-FF6B6B.svg?style=flat-square" alt="gpt-image-2">
+  <img src="https://img.shields.io/badge/MCP-compatible-1e1e2e.svg?style=flat-square" alt="MCP">
+  <img src="https://img.shields.io/badge/platform-cross--platform-lightgrey.svg?style=flat-square" alt="Platform">
+</p>
 
 ---
 
-## 快速开始
+<p align="center">
+  <img src="docs/images/gallery-photo.png" width="190" alt="Photoreal example">
+  &nbsp;
+  <img src="docs/images/gallery-product.png" width="150" alt="Product example">
+  &nbsp;
+  <img src="docs/images/gallery-illustration.png" width="240" alt="Illustration example">
+  &nbsp;
+  <img src="docs/images/gallery-text.png" width="150" alt="Text poster example">
+</p>
 
-### 环境要求
+<p align="center"><sub>All gallery images generated with <code>gpt-image-2</code> via this toolkit.</sub></p>
 
-- [Node.js](https://nodejs.org/) 22+（引擎用到了内置的实验性 SQLite）
-- [Python](https://python.org/) 3.10+（Skill 命令行工具）
-- 一个 OpenAI 兼容的图像生成 API（自备地址和密钥）
+---
 
-> **关于 sharp**：引擎用 sharp 做图像缩放，它是 native 库，首次 `npm install` 会编译（约 30-60 秒，需要系统有基本构建工具）。这是本仓库唯一的"重"依赖。
+## ✨ What it is
 
-### 第 1 步：获取并安装
+A command-line image generation toolkit that turns a prompt into a verified PNG with **exact target dimensions, strict aspect-ratio inheritance, and SHA-256 checksums**. It bundles everything you need in one repo — no separate engine install required.
+
+**Three components, one clone:**
+
+| Component | For who | Entry |
+|---|---|---|
+| 🖥️ **Skill (CLI)** | Developers, scripts, automation | `scripts/run_image_job.py` |
+| 🤖 **MCP server** | Cursor / Claude / AI assistants | `engine/mcp-server.mjs` |
+| ⚙️ **Engine (Task API)** | The backend that actually generates images | `npm run engine` |
+
+## 🎯 Why use this
+
+Calling an image API directly has three common pitfalls. This toolkit fixes all of them:
+
+| Problem | Direct API call | This toolkit |
+|---|---|---|
+| **Distorted ratio** | API returns a canvas that doesn't match your target → stretching distorts it | Forces exact integer-pixel ratio match, never stretches |
+| **Wrong size** | You want 4K, API gives 1K, upscaling is blurry | Lanczos3 upscale from a ratio-matched source canvas |
+| **Transparent edges** | `contain` mode adds empty borders | Uses `cover` geometry — no letterboxing, full bleed |
+
+**How it works:**
+
+```
+prompt + target size
+  → provider generates a raw canvas
+  → cover-crop to an exact integer-ratio "source" PNG
+  → Lanczos3 upscale to target size (ratio preserved, no re-selecting)
+  → output source + final + verification report
+```
+
+Every output is guaranteed: source and final share an identical ratio (`sourceW × finalH == finalW × sourceH`), final pixels exactly match the request, and the downloaded file's SHA-256 matches the manifest.
+
+## 🚀 Quick Start
+
+### Requirements
+
+- [Node.js](https://nodejs.org/) 22+
+- [Python](https://python.org/) 3.10+
+- An OpenAI-compatible image generation API (bring your own URL + key)
+
+> **Note on `sharp`:** the engine uses sharp for image scaling — it's a native library, so the first `npm install` compiles it (~30-60s). This is the only "heavy" dependency.
+
+### Install
 
 ```bash
 git clone https://github.com/wanghao137/generate-image-asset-skill.git
@@ -36,178 +87,150 @@ cd generate-image-asset-skill/generate-image-asset
 npm install
 ```
 
-### 第 2 步：配置（只需一次）
+### Configure (once)
 
-在仓库根目录创建 `.env.local` 文件（**这个文件不要分享、不要上传，里面有密钥**）：
+Create `.env.local` in the repo root (**never share or commit this file**):
 
 ```dotenv
-# 本地服务的访问令牌（你自己随便编一串长字符）
-IMAGE_TASK_API_TOKEN=把这里换成一串随机字符
-
-# 生图引擎监听端口
+IMAGE_TASK_API_TOKEN=make-up-a-long-random-string-here
 IMAGE_TASK_API_PORT=9789
-
-# 你的图像生成 API 配置
-IMAGE_TASK_PROVIDER_BASE_URL=https://你的API地址/v1
-IMAGE_TASK_PROVIDER_API_KEY=你的密钥
+IMAGE_TASK_PROVIDER_BASE_URL=https://your-api-endpoint/v1
+IMAGE_TASK_PROVIDER_API_KEY=your-secret-key
 IMAGE_TASK_PROVIDER_MODEL=gpt-image-2
 ```
 
-### 第 3 步：启动引擎
+### Start the engine
 
 ```bash
 npm run engine
 ```
 
-看到 `TaoStudio Image Task API listening at http://127.0.0.1:9789` 就说明引擎就绪。**这个窗口要一直开着**——关了就不能生图了。
+You should see `TaoStudio Image Task API listening at http://127.0.0.1:9789`. Keep this terminal open.
 
-### 第 4 步：生成第一张图
+### Generate your first image
 
-新开一个终端，进入仓库目录：
+In a new terminal:
 
 ```bash
 # Windows
-set IMAGE_TASK_API_TOKEN=你在第2步设的令牌
-py -3 scripts\run_image_job.py --backend task-api --api-url http://127.0.0.1:9789 --prompt "一只橘色猫咪在京都町家,午后阳光,写实摄影" --model gpt-image-2 --api-mode images --provider configured --size 2160x3840 --quality high --out my-image.png
-```
+set IMAGE_TASK_API_TOKEN=your-token-from-step-above
+py -3 scripts\run_image_job.py --backend task-api --api-url http://127.0.0.1:9789 --prompt "a ginger cat on a wooden porch, afternoon light, photoreal" --model gpt-image-2 --api-mode images --provider configured --size 2160x3840 --quality high --out my-image.png
 
-```bash
 # macOS / Linux
-export IMAGE_TASK_API_TOKEN=你在第2步设的令牌
-python3 scripts/run_image_job.py --backend task-api --api-url http://127.0.0.1:9789 --prompt "一只橘色猫咪在京都町家,午后阳光,写实摄影" --model gpt-image-2 --api-mode images --provider configured --size 2160x3840 --quality high --out my-image.png
+export IMAGE_TASK_API_TOKEN=your-token-from-step-above
+python3 scripts/run_image_job.py --backend task-api --api-url http://127.0.0.1:9789 --prompt "a ginger cat on a wooden porch, afternoon light, photoreal" --model gpt-image-2 --api-mode images --provider configured --size 2160x3840 --quality high --out my-image.png
 ```
 
-成功后会生成：
-- `my-image.png`：最终的高清大图（精确目标尺寸）
-- `my-image-source.png`：原始比例的源图
-- `my-image.report.json`：生成报告（尺寸、SHA-256、manifest）
+This produces:
+- `my-image.png` — the final high-resolution image (exact target size)
+- `my-image-source.png` — the source canvas (original ratio, pre-upscale)
+- `my-image.report.json` — generation report (dimensions, SHA-256, manifest)
 
----
+## 🤖 Use via AI assistant (MCP)
 
-## 用法二：通过 AI 助手（MCP）
-
-如果你用 Cursor、Claude Desktop 等支持 MCP 的 AI 工具，可以让 AI 直接帮你生图。
-
-先按上面的步骤 1-3 装好并启动引擎，然后在你的 AI 工具的 MCP 配置里填：
+If you use Cursor, Claude Desktop, or any MCP-compatible AI tool, it can generate images for you. After installing and starting the engine (above), add this to your AI tool's MCP config:
 
 ```json
 {
   "command": "node",
-  "args": ["/你clone的路径/generate-image-asset/engine/mcp-server.mjs"],
+  "args": ["/your/path/generate-image-asset/engine/mcp-server.mjs"],
   "env": {
     "IMAGE_TASK_API_URL": "http://127.0.0.1:9789",
-    "IMAGE_TASK_API_TOKEN": "你在第2步设的令牌"
+    "IMAGE_TASK_API_TOKEN": "your-token-from-env-local"
   }
 }
 ```
 
-配好后，AI 助手会获得 6 个能力：上传图片、创建任务、查询状态、等待完成、取消任务、下载图片（不会偷偷覆盖已有文件）。
+The AI assistant gains 6 capabilities: upload image, create job, query status, wait for completion, cancel, download (never silently overwrites existing files).
 
----
+## 🔀 Two model modes
 
-## 两种模型怎么选
-
-| 模型类型 | `--model` | `--api-mode` | 例子 |
+| Model type | `--model` | `--api-mode` | Example |
 |---|---|---|---|
-| 图像模型 | `gpt-image-2` 等 | `images` | 专门的生图模型（最常见） |
-| 文本模型 | `gpt-5.6-sol` 等 | `responses` | 能出图的对话模型 |
+| Image model | `gpt-image-2` etc. | `images` | Dedicated image models (most common) |
+| Text model | `gpt-5.6-sol` etc. | `responses` | Chat models that output images |
 
-**关键**：模型和 api-mode 必须配套。图像模型用 `images`，文本模型用 `responses`，选错会报错。
+**Key:** model and api-mode must match. Image models use `images`, text models use `responses`. Mismatching causes an error.
 
-文本模型生图示例：
+Text-model example:
 
 ```bash
-py -3 scripts/run_image_job.py --backend task-api --api-url http://127.0.0.1:9789 \
-  --prompt "极简科技品牌横幅插画" \
+python3 scripts/run_image_job.py --backend task-api --api-url http://127.0.0.1:9789 \
+  --prompt "minimalist tech brand banner illustration" \
   --model gpt-5.6-sol --api-mode responses --provider configured \
   --size 2880x2880 --quality high --out my-image.png
 ```
 
----
+## 📋 Common parameters
 
-## 常用参数
-
-| 参数 | 默认 | 说明 |
+| Parameter | Default | Description |
 |---|---|---|
-| `--backend` | `built-in` | `task-api`（推荐，用本仓库引擎） |
-| `--prompt-file` | - | 提示词文件路径（长提示词用这个） |
-| `--prompt` | - | 直接传提示词 |
-| `--size` | `2160x3840` | 最终尺寸，同时决定比例 |
-| `--model` | `gpt-image-2` | 模型名 |
-| `--api-mode` | `images` | `images` 或 `responses` |
-| `--provider` | `mock` | `configured`（用 .env.local 里的真实配置） |
-| `--quality` | `high` | 画质 |
-| `--content-class` | `photo` | `photo`/`illustration`/`text`/`logo`/`ui` |
-| `--enhancement` | `auto` | 放大算法，`lanczos3` 最常用 |
-| `--max-attempts` | `3` | 失败重试次数（1-5） |
-| `--out` | `output/.../output.png` | 输出路径 |
-| `--force` | 关 | 覆盖已有同名文件（不加则拒绝覆盖） |
+| `--backend` | `built-in` | `task-api` (recommended, uses this repo's engine) |
+| `--prompt-file` | — | Path to a prompt text file (use for long prompts) |
+| `--prompt` | — | Pass prompt inline |
+| `--size` | `2160x3840` | Final dimensions, also determines the ratio |
+| `--model` | `gpt-image-2` | Model name |
+| `--api-mode` | `images` | `images` or `responses` |
+| `--provider` | `mock` | `configured` (uses `.env.local` real config) |
+| `--quality` | `high` | Image quality |
+| `--content-class` | `photo` | `photo` / `illustration` / `text` / `logo` / `ui` |
+| `--enhancement` | `auto` | Upscale algorithm, `lanczos3` most common |
+| `--max-attempts` | `3` | Retry count on failure (1-5) |
+| `--out` | `output/.../output.png` | Output path |
+| `--force` | off | Overwrite existing file (refuses without this flag) |
 
----
+## ✅ Verify your install
 
-## 验证安装
-
-跑测试确认引擎工作正常（不需要真实 API key，用 mock）：
+Run the test suite (uses mock provider, no real API key needed):
 
 ```bash
 npm test
 ```
 
-预期：20 个测试全部通过。
+Expected: 20 tests passing.
 
----
+## ❓ FAQ
 
-## 常见问题
+**`npm install` fails / sharp won't compile?**
+sharp is native. Ensure Node 22+. On Windows install Visual Studio Build Tools; on macOS install Xcode Command Line Tools. See [sharp install docs](https://sharp.pixelplumbing.com/install).
 
-**`npm install` 报错 / sharp 编译失败？**
-sharp 是 native 库。确保 Node 22+，Windows 需装 Visual Studio Build Tools，macOS 需 Xcode Command Line Tools。详见 [sharp 安装文档](https://sharp.pixelplumbing.com/install)。
+**"requires an image model" error?**
+You used a text model (e.g. `gpt-5.6-sol`) with `--api-mode images`. Change to `--api-mode responses`.
 
-**生成失败提示 "requires an image model"？**
-你用文本模型（如 `gpt-5.6-sol`）却选了 `--api-mode images`。改成 `--api-mode responses`。
+**"connection refused"?**
+The engine isn't running, or the address/port is wrong. Confirm `npm run engine` is running and `--api-url` matches the port in `.env.local`.
 
-**生成失败提示 "connection refused"？**
-引擎没启动，或地址/端口不对。先确认 `npm run engine` 在跑，`--api-url` 地址和 `.env.local` 里的端口一致。
+**"output exists; pass --force"?**
+The output file already exists and the tool refuses to overwrite it. Use a different name, or add `--force`.
 
-**提示 "output exists; pass --force"？**
-输出文件已存在，工具拒绝覆盖。换个文件名，或加 `--force` 确认覆盖。
+**How to pass the token?**
+Use the `IMAGE_TASK_API_TOKEN` environment variable — never as a command-line argument (it would stay in shell history). `.env.local` is gitignored.
 
-**令牌怎么传？**
-用环境变量 `IMAGE_TASK_API_TOKEN`，不要写进命令行参数（会留在命令历史里）。`.env.local` 已被 `.gitignore` 排除。
-
-**图变形/有黑边？**
-不会的。引擎强制保证源图和成品图严格同比例，绝不拉伸或补黑边。这是核心设计。
-
----
-
-## 项目结构
+## 📁 Project structure
 
 ```
 generate-image-asset/
-├── engine/                          # 生图引擎（Task API）
-│   ├── service.mjs                  # 引擎核心：任务调度、比例校验、缩放
-│   ├── cli.mjs                      # 启动入口（npm run engine）
-│   ├── mcp-server.mjs               # MCP server（npm run mcp）
-│   └── service.test.mjs             # 引擎测试（npm test）
+├── engine/                          # Generation engine (Task API)
+│   ├── service.mjs                  # Core: job scheduling, ratio verification, scaling
+│   ├── cli.mjs                      # Entry point (npm run engine)
+│   ├── mcp-server.mjs               # MCP server (npm run mcp)
+│   └── service.test.mjs             # Engine tests (npm test)
 ├── scripts/
-│   ├── run_image_job.py             # Skill 命令行入口
-│   └── image_core_cli.mjs           # 几何计算 CLI
-├── vendor/image-job-core/           # 共享契约实现（比例、尺寸、校验）
+│   ├── run_image_job.py             # Skill CLI entry
+│   └── image_core_cli.mjs           # Geometry calculation CLI
+├── vendor/image-job-core/           # Shared contract impl (ratio, sizing, verification)
 ├── references/adversarial-review.md
 ├── agents/openai.yaml
 ├── package.json
-└── .env.local                       # 你的密钥（不上传）
+└── .env.local                       # Your keys (gitignored)
 ```
 
----
+## 🔗 Related
 
-## 与 TaoStudio Image Lab 的关系
+The engine in this repo is a publishable mirror of the [TaoStudio Image Lab](https://github.com/wanghao137/taostudio-image-lab) Task API, sharing the same Image Job Contract. TaoStudio Image Lab is the full web app; this repo extracts just the generation engine and tools so external users needn't clone the entire web project.
 
-本仓库的引擎是 [TaoStudio Image Lab](https://github.com/wanghao137/taostudio-image-lab) 中 Task API 的可发布镜像，复用同一套 Image Job Contract。TaoStudio Image Lab 是完整的网页应用（含前端），本仓库抽取了其中的生图引擎和工具，让外部用户无需拉取整个网页项目即可使用。
+Engine code stays in sync with the main repo via a sync script.
 
-引擎代码通过同步脚本保持与主仓库一致。
+## 📜 License
 
----
-
-## 许可证
-
-[MIT](./LICENSE) — 免费、可商用，保留版权声明即可。
+[MIT](./LICENSE) — free for commercial use, just keep the copyright notice.
