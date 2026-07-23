@@ -153,25 +153,58 @@ python3 scripts/run_image_job.py --backend task-api --api-url http://127.0.0.1:9
 | `my-image.png` | **精确 4K 成品** —— 最终像素精确匹配 `--size` |
 | `my-image.report.json` | **验证报告** —— 尺寸、SHA-256、manifest、路由 |
 
-### 第二步：接入 AI Agent（可选但推荐）
+### 第二步：接入 AI Agent（二选一）
 
-引擎跑起来后，装 Skill 让 Claude / Codex / Cursor 能驱动它：
+引擎跑起来后，用以下**任一方式**让 AI Agent 驱动它。两种方式平级，按你用的工具选：
 
-```bash
-npx skills add wanghao137/image-asset-pipeline
-```
+<table>
+  <tr>
+    <th width="50%" align="center">方式 A：Skill</th>
+    <th width="50%" align="center">方式 B：MCP</th>
+  </tr>
+  <tr>
+    <td valign="top">
+      适合 Claude Code / Codex / Cursor 等 Agent runtime。
+      <br><br>
+      <pre lang="bash">npx skills add wanghao137/image-asset-pipeline</pre>
+      指定 runtime：
+      <pre lang="bash">npx skills add wanghao137/image-asset-pipeline -a claude-code
+npx skills add wanghao137/image-asset-pipeline -a codex
+npx skills add wanghao137/image-asset-pipeline -a cursor</pre>
+      支持：Claude Code · Codex · Cursor · OpenCode · Gemini CLI · OpenClaw（共 70+）
+    </td>
+    <td valign="top">
+      适合任何 MCP 兼容客户端（Cursor / Claude Desktop / 自建 Agent）。
+      <br><br>
+      在 AI 工具的 MCP 配置里加：
+      <pre lang="json">{
+  "command": "node",
+  "args": ["/你的路径/generate-image-asset/engine/mcp-server.mjs"],
+  "env": {
+    "IMAGE_TASK_API_URL": "http://127.0.0.1:9789",
+    "IMAGE_TASK_API_TOKEN": "你-env-local-里的-token"
+  }
+}</pre>
+      获得 6 个工具：create / get / wait / cancel / upload / download
+    </td>
+  </tr>
+</table>
 
-想指定 runtime：
+> 无论选哪种，都连到第一步启动的引擎。**引擎必须在运行**，否则出不了图。
 
-```bash
-npx skills add wanghao137/image-asset-pipeline -a claude-code   # Claude Code
-npx skills add wanghao137/image-asset-pipeline -a codex         # Codex
-npx skills add wanghao137/image-asset-pipeline -a cursor        # Cursor
-```
+<details>
+<summary><b>MCP 六个工具详情</b></summary>
 
-支持 runtime：**Claude Code · Codex · Cursor · OpenCode · Gemini CLI · OpenClaw**，通过 [`npx skills`](https://github.com/vercel-labs/skills) 共 70+。
+| 工具 | 用途 |
+|---|---|
+| `image_asset_upload(path)` | 上传本地 PNG，返回资产 ID + manifest |
+| `image_job_create(...)` | 创建幂等生成任务 |
+| `image_job_get(jobId)` | 读取状态 + 事件 |
+| `image_job_wait(jobId, timeoutMs)` | 最多等待 30 分钟 |
+| `image_job_cancel(jobId)` | 取消排队中或进行中的任务 |
+| `image_asset_download(assetId, outputPath)` | 独占写入下载（绝不静默覆盖） |
 
-> Skill 默认用 `task-api` 后端，连到你刚启动的引擎。确保引擎在运行，Skill 才能出图。
+</details>
 
 ---
 
@@ -223,34 +256,6 @@ npx skills add wanghao137/image-asset-pipeline -a cursor        # Cursor
     </td>
   </tr>
 </table>
-
----
-
-## 🤖 通过 MCP 接入 AI 助手
-
-引擎跑起来后，把这段加进 AI 工具的 MCP 配置：
-
-```json
-{
-  "command": "node",
-  "args": ["/你的路径/generate-image-asset/engine/mcp-server.mjs"],
-  "env": {
-    "IMAGE_TASK_API_URL": "http://127.0.0.1:9789",
-    "IMAGE_TASK_API_TOKEN": "你-env-local-里的-token"
-  }
-}
-```
-
-助手获得**六个类型化工具**：
-
-| 工具 | 用途 |
-|---|---|
-| `image_asset_upload(path)` | 上传本地 PNG，返回资产 ID + manifest |
-| `image_job_create(...)` | 创建幂等生成任务 |
-| `image_job_get(jobId)` | 读取状态 + 事件 |
-| `image_job_wait(jobId, timeoutMs)` | 最多等待 30 分钟 |
-| `image_job_cancel(jobId)` | 取消排队中或进行中的任务 |
-| `image_asset_download(assetId, outputPath)` | 独占写入下载（绝不静默覆盖） |
 
 ---
 
