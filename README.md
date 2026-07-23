@@ -36,16 +36,17 @@
 
 ---
 
-## 🎯 它解决了什么
+## 🎯 核心价值
 
-直接调图像 API 有三个老问题。这个流水线全修了：
+这个项目的核心是一个**本地图像生成引擎**（Task API）。它做三件直接调 API 做不到的事：
 
-| 问题 | 直接调 API | 本流水线 |
+| 问题 | 直接调图像 API | 本流水线引擎 |
 |---|---|---|
 | **比例变形** | API 返回的画布比例对不上目标 → 拉伸变形 | 强制精确整数像素比匹配，**绝不拉伸** |
 | **尺寸不对** | 你要 4K，API 给 1K，放大就糊 | 从比例匹配的源画布做 Lanczos3 放大 |
-| **透明黑边** | `contain` 模式留空边 | 用 `cover` 几何裁切——**无黑边，满版** |
 | **无可审计链路** | 只得到一个 blob，无出处 | 源图 + 成品 + manifest + SHA-256，**每次都有** |
+
+**Skill 和 MCP 是引擎的接口**——它们让 Claude / Codex / Cursor 能驱动引擎。但引擎本身才是核心：没有引擎，就没有精确比例、没有双资产、没有验证。
 
 ---
 
@@ -53,7 +54,7 @@
 
 > **你：** *"生成一张电影感产品图。"*
 
-**Agent（运行此流水线）：**
+**Agent（通过 Skill / MCP 驱动引擎）：**
 
 ```
 → image_job_create
@@ -97,36 +98,9 @@
 
 ## 🚀 安装
 
-两种方式，按你的目标选。
+### 第一步：克隆并启动引擎（核心）
 
-### 方式一：装 Skill（让 AI 助手出图）
-
-最简单。装完 Skill，你的 Agent 就能用它**自带的图像工具**出图，不需要起引擎。
-
-```bash
-npx skills add wanghao137/image-asset-pipeline
-```
-
-这会把 Skill（`SKILL.md` + `scripts/run_image_job.py`）装进 Agent 的 skills 目录，自动检测已装的 runtime。想指定 runtime：
-
-```bash
-# Claude Code
-npx skills add wanghao137/image-asset-pipeline -a claude-code
-
-# Codex
-npx skills add wanghao137/image-asset-pipeline -a codex
-
-# Cursor
-npx skills add wanghao137/image-asset-pipeline -a cursor
-```
-
-支持 runtime：**Claude Code · Codex · Cursor · OpenCode · Gemini CLI · OpenClaw**，通过 [`npx skills`](https://github.com/vercel-labs/skills) 共 70+。
-
-> 装完 Skill，Agent 用 `built-in` 后端调它自带的图像工具出图，然后 Skill 本地做比例校验、cover 裁切、Lanczos3 放大、SHA-256 验证。**不需要引擎也能出 4K。** 引擎（方式二）是可选升级，给需要批量/自动化/服务端的场景用。
-
-### 方式二：本地引擎（批量 4K，或用 MCP）
-
-适合：脚本自动化、批量出图、或想让 Cursor/Claude 通过 MCP 驱动引擎。
+引擎是这个项目的核心。必须先启动它，Skill 和 MCP 才能工作。
 
 ```bash
 git clone https://github.com/wanghao137/image-asset-pipeline.git
@@ -134,7 +108,7 @@ cd image-asset-pipeline/generate-image-asset
 npm install
 ```
 
-> **关于 `sharp`：** 引擎用 [`sharp`](https://sharp.pixelplumbing.com/) 做图像缩放——原生库，首次 `npm install` 会编译（约 30-60 秒）。这是唯一的"重型"依赖。需要 Node.js 22+。
+> **关于 `sharp`：** 引擎用 [`sharp`](https://sharp.pixelplumbing.com/) 做图像缩放——原生库，首次 `npm install` 会编译（约 30-60 秒）。需要 Node.js 22+。
 
 配置一次——在仓库根目录创建 `.env.local`（**永不分享或提交**）：
 
@@ -150,10 +124,10 @@ IMAGE_TASK_PROVIDER_MODEL=gpt-image-2
 
 ```bash
 npm run engine
-# → TaoStudio Image Task API listening at http://127.0.0.1:9789
+# → TaoStudio Image API listening at http://127.0.0.1:9789
 ```
 
-生成你的第一个验证资产：
+引擎起来后，你就可以用命令行出图了：
 
 ```bash
 # Windows
@@ -171,13 +145,33 @@ python3 scripts/run_image_job.py --backend task-api --api-url http://127.0.0.1:9
   --size 2160x3840 --quality high --out my-image.png
 ```
 
-产出**三个文件**——流水线核心的双资产输出：
+产出**三个文件**：
 
 | 文件 | 它是什么 |
 |---|---|
 | `my-image-source.png` | **原始源图** —— 规范画布，精确比例，放大前 |
 | `my-image.png` | **精确 4K 成品** —— 最终像素精确匹配 `--size` |
 | `my-image.report.json` | **验证报告** —— 尺寸、SHA-256、manifest、路由 |
+
+### 第二步：接入 AI Agent（可选但推荐）
+
+引擎跑起来后，装 Skill 让 Claude / Codex / Cursor 能驱动它：
+
+```bash
+npx skills add wanghao137/image-asset-pipeline
+```
+
+想指定 runtime：
+
+```bash
+npx skills add wanghao137/image-asset-pipeline -a claude-code   # Claude Code
+npx skills add wanghao137/image-asset-pipeline -a codex         # Codex
+npx skills add wanghao137/image-asset-pipeline -a cursor        # Cursor
+```
+
+支持 runtime：**Claude Code · Codex · Cursor · OpenCode · Gemini CLI · OpenClaw**，通过 [`npx skills`](https://github.com/vercel-labs/skills) 共 70+。
+
+> Skill 默认用 `task-api` 后端，连到你刚启动的引擎。确保引擎在运行，Skill 才能出图。
 
 ---
 
@@ -191,7 +185,7 @@ python3 scripts/run_image_job.py --backend task-api --api-url http://127.0.0.1:9
 
 三个硬校验门控每个成功的任务。任一失败，任务即失败——**绝无静默损坏**。
 
-<img src="docs/images/verification.png" alt="验证流程图" width="640">
+<img src="docs/images/verification.png" alt="验证流程图" width="600">
 
 只有当三者都成立，任务才标记 `succeeded`：
 
@@ -232,9 +226,9 @@ python3 scripts/run_image_job.py --backend task-api --api-url http://127.0.0.1:9
 
 ---
 
-## 🤖 通过 AI 助手使用（MCP）
+## 🤖 通过 MCP 接入 AI 助手
 
-完成[方式二](#方式二本地引擎批量-4k或用-mcp)后，把这段加进 AI 工具的 MCP 配置：
+引擎跑起来后，把这段加进 AI 工具的 MCP 配置：
 
 ```json
 {
@@ -275,7 +269,7 @@ python3 scripts/run_image_job.py --backend task-api --api-url http://127.0.0.1:9
 
 | 参数 | 默认值 | 说明 |
 |---|---|---|
-| `--backend` | `built-in` | `built-in`（Agent 自带工具）/ `task-api`（本仓库引擎） |
+| `--backend` | `built-in` | `task-api`（推荐，用本仓库引擎） |
 | `--prompt-file` | — | 提示词文本文件路径（长提示词用） |
 | `--size` | `2160x3840` | 最终尺寸，同时决定比例 |
 | `--model` | `gpt-image-2` | 模型名 |
@@ -298,7 +292,7 @@ python3 scripts/run_image_job.py --backend task-api --api-url http://127.0.0.1:9
 npm test
 ```
 
-预期：**20 个测试通过**（用 mock provider，不需要真实 API key）。这是确认引擎、契约、验证逻辑在你机器上正常的最快方式。
+预期：**20 个测试通过**（用 mock provider，不需要真实 API key）。
 
 ---
 
@@ -307,14 +301,17 @@ npm test
 **`npm install` 失败 / sharp 编译不过？**
 确保 Node.js 22+。Windows 装 Visual Studio Build Tools，macOS 装 Xcode Command Line Tools。详见 [sharp 安装文档](https://sharp.pixelplumbing.com/install)。
 
+**Skill 装完了为什么出不了图？**
+Skill 需要引擎在运行。先按[第一步](#第一步克隆并启动引擎核心)启动 `npm run engine`，确保 `http://127.0.0.1:9789` 可达，Skill 用 `--backend task-api` 连引擎出图。
+
 **"generation base size conflicts with the requested composition ratio"？**
 请求了不支持的比例（如 `4:5`）。用上面列出的支持比例。`--size` 宽高比必须能约分为支持的比例。
 
 **"requires an image model" 错误？**
 文本模型（如 `gpt-5.6-sol`）配了 `--api-mode images`。改成 `--api-mode responses`。
 
-**方式一装完 Skill 还需要引擎吗？**
-不需要。Skill 默认用 `built-in` 后端，直接调 Agent 自带的图像工具出图，然后本地做比例校验和放大。引擎是可选的批量/自动化升级。
+**"connection refused"？**
+引擎没在跑。确认 `npm run engine` 在运行，且 `--api-url` 与 `.env.local` 里的端口一致。
 
 ---
 
@@ -322,15 +319,15 @@ npm test
 
 ```
 generate-image-asset/
-├── engine/                          # 生成引擎（Task API）
-│   ├── service.mjs                  # 核心：任务调度、比例校验、缩放
+├── engine/                          # 生成引擎（核心）
+│   ├── service.mjs                  # 任务调度、比例校验、缩放
 │   ├── cli.mjs                      # 入口（npm run engine）
 │   ├── mcp-server.mjs               # MCP 服务器（npm run mcp）
 │   └── service.test.mjs             # 引擎测试（npm test）
 ├── scripts/
 │   ├── run_image_job.py             # Skill CLI 入口
 │   └── image_core_cli.mjs           # 几何计算 CLI
-├── vendor/image-job-core/           # 共享契约实现（比例、尺寸、验证）
+├── vendor/image-job-core/           # 共享契约（比例、尺寸、验证）
 ├── SKILL.md                         # Agent Skill 规范
 ├── package.json
 └── .env.local                       # 你的密钥（gitignored）
@@ -346,13 +343,11 @@ generate-image-asset/
 
 ## English
 
-**Production-grade AI image asset pipeline for Agents.** Generate once, receive: original source image + exact 4K production asset + verification report.
+**Production-grade AI image asset pipeline for Agents.** The core is a local generation engine (Task API) that turns one prompt into three verified outputs: original source image, exact 4K production asset, and a verification report (dimensions + ratio invariant + SHA-256).
 
-**Install:** `npx skills add wanghao137/image-asset-pipeline` (Skill only, uses your agent's built-in image tool), or `git clone` + `npm install` + `npm run engine` for the local engine + MCP.
+**Setup:** `git clone` → `npm install` → configure `.env.local` → `npm run engine` → use the CLI, or install the Skill / MCP to let Claude / Codex / Cursor drive it.
 
-**Two model modes:** `--api-mode images` for image models (gpt-image-2), `--api-mode responses` for text models that emit images (gpt-5.6-sol).
-
-**Verified outputs:** every job is gated by three hard checks — exact dimensions, ratio invariant (`srcW×finalH == finalW×srcH`), and SHA-256 checksum against the server manifest. Run `npm test` to verify (20 tests, mock provider, no key needed).
+**Why an engine?** Direct API calls stretch ratios, return wrong sizes, and leave no audit trail. The engine forces exact integer-pixel ratio matching, Lanczos3 upscaling from a ratio-locked source canvas, and SHA-256 verification against a server manifest. Skill and MCP are interfaces to the engine — without it running, there's no precise ratio, no dual asset, no verification.
 
 See the Chinese sections above for full parameter reference, MCP config, and FAQ.
 
