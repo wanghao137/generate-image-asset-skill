@@ -1,0 +1,4 @@
+interface:
+  display_name: "Generate Image Asset"
+  short_description: "Create verified image assets from prompts"
+  default_prompt: "Use $generate-image-asset to turn this prompt into a verified output/imagegen PNG."

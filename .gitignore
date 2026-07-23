@@ -1,0 +1,18 @@
+# 本地产物 —— 不要提交
+output/
+work/
+__pycache__/
+*.pyc
+
+# 密钥与本地配置 —— 永远不要提交
+.env
+.env.local
+*.token
+.api_token
+
+# 编辑器/系统
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.zcode/
