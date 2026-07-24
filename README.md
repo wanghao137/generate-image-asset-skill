@@ -24,7 +24,7 @@
 ---
 
 **面向 AI Agent 的生产级图像资产流水线。** 不是又一个图片生成脚本——
-它是 Agent 时代的图像导出管线：你给一句提示词，它吐回三样东西：
+它是 Agent 时代的图像导出管线：你给一句提示词**或一张参考图**，它吐回三样东西：
 
 | 输出 | 是什么 |
 |---|---|
@@ -38,13 +38,14 @@
 
 ## 🎯 核心价值
 
-这个项目的核心是一个**本地图像生成引擎**（Task API）。它做三件直接调 API 做不到的事：
+这个项目的核心是一个**本地图像生成引擎**（Task API）。支持**文生图**和**图生图**两种模式，做四件直接调 API 做不到的事：
 
-| 问题 | 直接调图像 API | 本流水线引擎 |
-|---|---|---|
-| **比例变形** | API 返回的画布比例对不上目标 → 拉伸变形 | 强制精确整数像素比匹配，**绝不拉伸** |
-| **尺寸不对** | 你要 4K，API 给 1K，放大就糊 | 从比例匹配的源画布做 Lanczos3 放大 |
-| **无可审计链路** | 只得到一个 blob，无出处 | 源图 + 成品 + manifest + SHA-256，**每次都有** |
+| 能力 | 说明 |
+|---|---|
+| 🖼 **文生图** | 提示词 → 精确比例源图 + 4K 成品 + 验证报告 |
+| 🔄 **图生图** | 上传参考图 + 提示词 → AI 看着参考图生成**新图**，同样输出双资产 + 验证 |
+| 📐 **精确比例** | 强制整数像素比匹配，绝不拉伸、不变形、无黑边 |
+| 🔍 **验证链路** | 源图 + 成品 + manifest + SHA-256，每次都可审计 |
 
 **Skill 和 MCP 是引擎的接口**——它们让 Claude / Codex / Cursor 能驱动引擎。但引擎本身才是核心：没有引擎，就没有精确比例、没有双资产、没有验证。
 
@@ -259,6 +260,65 @@ npx skills add wanghao137/image-asset-pipeline -a cursor</pre>
 
 ---
 
+## 🔄 图生图（Image-to-Image）
+
+上传一张参考图 + 一句提示词，引擎让 AI **看着参考图生成一张全新的图**——不是缩放，不是滤镜，是真正的基于参考图的再创作。
+
+### 工作原理
+
+```bash
+# 1. 上传参考图（任何 PNG）
+curl -X POST http://127.0.0.1:9789/v1/assets/uploads \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: image/png" \
+  --data-binary @reference.png
+# → { "assetId": "asset_xxx...", ... }
+
+# 2. 提交图生图任务（sourceAssetId + prompt 同时存在 = edit 模式）
+curl -X POST http://127.0.0.1:9789/v1/image-jobs \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contractVersion": "1",
+    "idempotencyKey": "edit:001",
+    "input": {
+      "sourceAssetId": "asset_xxx...",
+      "prompt": "按照这张图的毛毡拼贴风格，生成一张咖啡冲煮流程信息图"
+    },
+    "composition": { "ratio": "1:1" },
+    "generation": { "provider": "configured", "model": "gpt-image-2", "apiMode": "images" },
+    "output": { "ratioMode": "inherit", "format": "png", "quality": "high", "dimensions": "2160x2160", "enhancement": "lanczos3", "contentClass": "illustration" },
+    "retry": { "maxAttempts": 5 }
+  }'
+```
+
+### 真实示例
+
+参考图（左）→ AI 生成的全新图（右）。两张图 SHA-256 完全不同，证明是真正的再创作：
+
+<table align="center">
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/images/hero.png" width="320" alt="参考图"><br>
+      <sub><b>参考图</b>（上传）</sub><br>
+      <sub>毛毡拼贴风格的 hero banner</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/images/edit-result.png" width="280" alt="图生图结果"><br>
+      <sub><b>图生图结果</b>（AI 新生成）</sub><br>
+      <sub>同风格，全新主题"咖啡冲煮"</sub>
+    </td>
+  </tr>
+</table>
+
+<div align="center">
+<sub>引擎把参考图发给 provider 的 <code>/images/edits</code> 端点，AI 看着参考图生成新图，再走同样的比例校验 → Lanczos3 → SHA-256 验证流程。</sub>
+</div>
+
+> **MCP / Skill 用法：** 先调 `image_asset_upload` 上传参考图拿到 `assetId`，再调 `image_job_create` 时同时传 `sourceAssetId` + `prompt` 即可触发图生图。两种 apiMode（`images` 走 `/images/edits`，`responses` 走 `action:'edit'` + 多模态输入）都支持。
+
+---
+
 ## 🔀 两种模型模式
 
 | 模型类型 | `--model` | `--api-mode` | 示例 |
@@ -348,9 +408,11 @@ generate-image-asset/
 
 ## English
 
-**Production-grade AI image asset pipeline for Agents.** The core is a local generation engine (Task API) that turns one prompt into three verified outputs: original source image, exact 4K production asset, and a verification report (dimensions + ratio invariant + SHA-256).
+**Production-grade AI image asset pipeline for Agents.** The core is a local generation engine (Task API) supporting both **text-to-image** (prompt → image) and **image-to-image** (reference image + prompt → new image). Both modes produce three verified outputs: original source image, exact 4K production asset, and a verification report (dimensions + ratio invariant + SHA-256).
 
 **Setup:** `git clone` → `npm install` → configure `.env.local` → `npm run engine` → use the CLI, or install the Skill / MCP to let Claude / Codex / Cursor drive it.
+
+**Image-to-image:** Upload a reference image via `image_asset_upload`, then pass `sourceAssetId` + `prompt` together to `image_job_create`. The engine sends the reference to the provider's edit endpoint (`/images/edits` for images mode, `action:'edit'` for responses mode), and the AI generates a genuinely new image based on the reference — not a resize or filter.
 
 **Why an engine?** Direct API calls stretch ratios, return wrong sizes, and leave no audit trail. The engine forces exact integer-pixel ratio matching, Lanczos3 upscaling from a ratio-locked source canvas, and SHA-256 verification against a server manifest. Skill and MCP are interfaces to the engine — without it running, there's no precise ratio, no dual asset, no verification.
 
