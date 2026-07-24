@@ -24,7 +24,8 @@ Required outputs:
 - The built-in `image_gen` tool only accepts the prompt exposed in the tool schema. Treat `moderation: low` as the desired profile in preflight/reporting, not as a guarantee that the tool received an API moderation parameter.
 - Treat requested model, quality, and size as the desired generation profile. The exact final pixel size is enforced locally after generation when needed.
 - Default image moderation to `low`; pass `auto` only when explicitly requested.
-- If the user requests `2160x3840`, the final saved asset must be exactly `2160x3840` unless generation is blocked.
+- The engine defaults to **2K generation → 4K final output**. You do not need to specify dimensions — if omitted, the engine selects the 4K preset for the given ratio (e.g. `3:4` → `2400x3200`, `9:16` → `2160x3840`, `1:1` → `2880x2880`).
+- If the user requests a specific size like `2160x3840`, the final saved asset must be exactly `2160x3840` unless generation is blocked.
 - Always preserve the unmodified built-in generated image as `*-raw.<ext>`.
 - `*-source.<ext>` is the canonical source canvas. If raw already matches the requested ratio it may be copied unchanged; otherwise normalize it with a centered `cover` crop and record that transform.
 - Never stretch a ratio-mismatched raw image into the requested final dimensions.
@@ -156,18 +157,33 @@ python "<skill-dir>/scripts/run_image_job.py" \
   --prompt-file work/imagegen/prompt.txt \
   --model gpt-image-2 \
   --provider configured \
-  --size 2160x3840 \
+  --ratio 9:16 \
   --quality high \
   --output-format png \
   --max-attempts 5 \
   --out output/imagegen/example.png
 ```
 
-The backend creates one idempotent job, downloads immutable source and final
-assets separately, and verifies PNG signature, SHA-256, exact final dimensions,
-and inherited source ratio. The bundled `vendor/image-job-core` is the portable
+`--size` is optional. When omitted, the engine defaults to 2K generation and
+inherits a 4K final target from the ratio (see 4K presets below). The backend
+creates one idempotent job, downloads immutable source and final assets
+separately, and verifies PNG signature, SHA-256, exact final dimensions, and
+inherited source ratio. The bundled `vendor/image-job-core` is the portable
 geometry and contract implementation; `scripts/image_core_cli.mjs` exposes it
 without any TaoStudio repository dependency.
+
+### 4K Final Presets by Ratio
+
+| Ratio | 4K Final | 2K Generation |
+|-------|----------|---------------|
+| 1:1 | 2880x2880 | 2048x2048 |
+| 3:2 | 3456x2304 | 2160x1440 |
+| 2:3 | 2304x3456 | 1440x2160 |
+| 16:9 | 3840x2160 | 2560x1440 |
+| 9:16 | 2160x3840 | 1440x2560 |
+| 4:3 | 3200x2400 | 2048x1536 |
+| 3:4 | 2400x3200 | 1536x2048 |
+| 21:9 | 3840x1646 | 2560x1097 |
 
 ## Ratio-Safe Post-Processing
 

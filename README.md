@@ -61,14 +61,14 @@
 → image_job_create
     prompt: "cinematic product image"
     ratio: 3:4
-    dimensions: 2160x2880
     model: gpt-image-2
+    (dimensions 省略 → 自动 4K: 2400x3200)
 
-✓ 源图资产生成   (asset_7ffd…, 1086×1448, 3:4)
-✓ 4K 生产资产生成 (asset_6b2a…, 2160×2880, 精确)
+✓ 源图资产生成   (asset_7ffd…, 1536×2048, 3:4)
+✓ 4K 生产资产生成 (asset_6b2a…, 2400×3200, 精确)
 ✓ 验证完成
-    · 尺寸: 2160x2880 ✓
-    · 比例不变量: 1086×2880 == 2160×1448 ✓
+    · 尺寸: 2400x3200 ✓
+    · 比例不变量: 1536×3200 == 2400×2048 ✓
     · SHA-256: 9f3a…e21c 匹配 manifest ✓
 ```
 
@@ -80,12 +80,12 @@
   <tr>
     <td align="center" width="50%">
       <img src="docs/images/dual-output-source.png" width="280" alt="源图"><br>
-      <sub><b>源图</b> · 1086×1448 · 3:4</sub><br>
-      <sub>原始画布，放大前</sub>
+      <sub><b>源图</b> · 1536×2048 · 3:4</sub><br>
+      <sub>2K 生成画布，放大前</sub>
     </td>
     <td align="center" width="50%">
       <img src="docs/images/dual-output-final.png" width="280" alt="成品"><br>
-      <sub><b>成品</b> · 2160×2880 · 3:4</sub><br>
+      <sub><b>成品</b> · 2400×3200 · 3:4</sub><br>
       <sub>精确目标像素，Lanczos3</sub>
     </td>
   </tr>
@@ -136,22 +136,24 @@ set IMAGE_TASK_API_TOKEN=你上面填的-token
 py -3 scripts\run_image_job.py --backend task-api --api-url http://127.0.0.1:9789 ^
   --prompt "一只橘猫趴在木制门廊上，午后阳光，照片级真实" ^
   --model gpt-image-2 --api-mode images --provider configured ^
-  --size 2160x3840 --quality high --out my-image.png
+  --ratio 9:16 --quality high --out my-image.png
 
 # macOS / Linux
 export IMAGE_TASK_API_TOKEN=你上面填的-token
 python3 scripts/run_image_job.py --backend task-api --api-url http://127.0.0.1:9789 \
   --prompt "一只橘猫趴在木制门廊上，午后阳光，照片级真实" \
   --model gpt-image-2 --api-mode images --provider configured \
-  --size 2160x3840 --quality high --out my-image.png
+  --ratio 9:16 --quality high --out my-image.png
 ```
+
+> **`--size` 可省略。** 不填时引擎默认 2K 生成 → 4K 输出（按比例自动选预设，如 `9:16` → `2160x3840`）。需要自定义尺寸时再加 `--size 2160x3840`。
 
 产出**三个文件**：
 
 | 文件 | 它是什么 |
 |---|---|
 | `my-image-source.png` | **原始源图** —— 规范画布，精确比例，放大前 |
-| `my-image.png` | **精确 4K 成品** —— 最终像素精确匹配 `--size` |
+| `my-image.png` | **精确 4K 成品** —— 最终像素精确匹配目标尺寸 |
 | `my-image.report.json` | **验证报告** —— 尺寸、SHA-256、manifest、路由 |
 
 ### 第二步：接入 AI Agent（二选一）
@@ -336,7 +338,8 @@ curl -X POST http://127.0.0.1:9789/v1/image-jobs \
 |---|---|---|
 | `--backend` | `built-in` | `task-api`（推荐，用本仓库引擎） |
 | `--prompt-file` | — | 提示词文本文件路径（长提示词用） |
-| `--size` | `2160x3840` | 最终尺寸，同时决定比例 |
+| `--ratio` | `9:16` | 目标比例，决定生成和输出画布 |
+| `--size` | 自动（4K） | 最终尺寸；**省略时按 `--ratio` 自动选 4K 预设** |
 | `--model` | `gpt-image-2` | 模型名 |
 | `--api-mode` | `images` | `images` 或 `responses` |
 | `--provider` | `mock` | `configured`（用 `.env.local` 真实配置） |
@@ -347,7 +350,20 @@ curl -X POST http://127.0.0.1:9789/v1/image-jobs \
 | `--out` | `output/.../output.png` | 输出路径 |
 | `--force` | 关 | 覆盖已存在文件（不加此标记会拒绝） |
 
-**支持比例：** `1:1` · `3:2` · `2:3` · `16:9` · `9:16` · `4:3` · `3:4` · `21:9`
+> **尺寸策略：** 引擎默认向 provider 请求 **2K** 画布生成，再 Lanczos3 放大到 **4K** 最终输出。Provider 返回任意尺寸都能正常处理（自动 cover-crop + 比例校验）。不填 `--size` 时，按 `--ratio` 自动选 4K 预设：
+
+**支持比例与 4K 预设：**
+
+| 比例 | 4K 成品 | 2K 生成 |
+|---|---|---|
+| `1:1` | 2880×2880 | 2048×2048 |
+| `3:2` | 3456×2304 | 2160×1440 |
+| `2:3` | 2304×3456 | 1440×2160 |
+| `16:9` | 3840×2160 | 2560×1440 |
+| `9:16` | 2160×3840 | 1440×2560 |
+| `4:3` | 3200×2400 | 2048×1536 |
+| `3:4` | 2400×3200 | 1536×2048 |
+| `21:9` | 3840×1646 | 2560×1097 |
 
 ---
 
@@ -357,7 +373,7 @@ curl -X POST http://127.0.0.1:9789/v1/image-jobs \
 npm test
 ```
 
-预期：**20 个测试通过**（用 mock provider，不需要真实 API key）。
+预期：**24 个测试通过**（用 mock provider，不需要真实 API key）。
 
 ---
 
